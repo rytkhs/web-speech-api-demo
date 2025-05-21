@@ -23,7 +23,7 @@
 1. リポジトリをクローンするか、ダウンロードします：
 
 ```bash
-git clone [リポジトリのURL]
+git clone https://github.com/rytkhs/web-speech-api-demo.git
 ```
 
 2. `index.html`を Web ブラウザで開きます。
