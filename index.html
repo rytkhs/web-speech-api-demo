@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Speech API 音声認識デモ</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        .interim {
+            color: gray;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .mic-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .mic-button.active {
+            background-color: #ff4b4b;
+            color: white;
+            border-color: #ff4b4b;
+        }
+        .mic-button:hover {
+            background-color: #f0f0f0;
+        }
+        .mic-button.active:hover {
+            background-color: #e04141;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f8f8f8;
+            color: #666;
+        }
+        .clear-button {
+            background-color: #e0e0e0;
+            color: #333;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .clear-button:hover {
+            background-color: #d0d0d0;
+        }
+        .mic-icon {
+            width: 20px;
+            height: 20px;
+        }
+        .pulse {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Web Speech API 音声認識デモ</h1>
+
+        <textarea id="output" placeholder="ここにテキストを入力するか、音声認識を使用してください..."></textarea>
+
+        <div id="interim" class="interim"></div>
+
+        <div class="controls">
+            <button id="micButton" class="mic-button">
+                <svg class="mic-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 15.5C14.21 15.5 16 13.71 16 11.5V6C16 3.79 14.21 2 12 2C9.79 2 8 3.79 8 6V11.5C8 13.71 9.79 15.5 12 15.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M4.35 9.65V11.35C4.35 15.57 7.78 19 12 19C16.22 19 19.65 15.57 19.65 11.35V9.65" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 19V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 22H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                音声認識を開始
+            </button>
+
+            <button id="clearButton" class="clear-button">
+                テキストをクリア
+            </button>
+        </div>
+
+        <div id="status" class="status">
+            音声認識は停止しています
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const outputElement = document.getElementById('output');
+            const interimElement = document.getElementById('interim');
+            const micButton = document.getElementById('micButton');
+            const clearButton = document.getElementById('clearButton');
+            const statusElement = document.getElementById('status');
+            const micIcon = micButton.querySelector('.mic-icon');
+
+            // Web Speech API が利用可能かチェック
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                statusElement.textContent = 'お使いのブラウザは音声認識をサポートしていません。';
+                micButton.disabled = true;
+                return;
+            }
+
+            // 音声認識インスタンスの作成
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+
+            // 設定
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            let isRecognizing = false;
+
+            // 開始・停止のトグル
+            micButton.addEventListener('click', () => {
+                if (isRecognizing) {
+                    stopRecognition();
+                } else {
+                    startRecognition();
+                }
+            });
+
+            // テキストクリア
+            clearButton.addEventListener('click', () => {
+                outputElement.value = '';
+                interimElement.textContent = '';
+            });
+
+            // 音声認識開始
+            function startRecognition() {
+                try {
+                    recognition.start();
+                    isRecognizing = true;
+                    updateUI();
+                } catch (error) {
+                    console.error('音声認識の開始に失敗しました:', error);
+                    statusElement.textContent = '音声認識の開始に失敗しました: ' + error.message;
+                }
+            }
+
+            // 音声認識停止
+            function stopRecognition() {
+                recognition.stop();
+                isRecognizing = false;
+                updateUI();
+            }
+
+            // UI更新
+            function updateUI() {
+                if (isRecognizing) {
+                    micButton.classList.add('active');
+                    micButton.innerHTML = `
+                        <svg class="mic-icon pulse" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 15.5C14.21 15.5 16 13.71 16 11.5V6C16 3.79 14.21 2 12 2C9.79 2 8 3.79 8 6V11.5C8 13.71 9.79 15.5 12 15.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M4.35 9.65V11.35C4.35 15.57 7.78 19 12 19C16.22 19 19.65 15.57 19.65 11.35V9.65" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M12 19V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M8 22H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        音声認識を停止
+                    `;
+                    statusElement.textContent = '音声認識中... 話してください';
+                } else {
+                    micButton.classList.remove('active');
+                    micButton.innerHTML = `
+                        <svg class="mic-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 15.5C14.21 15.5 16 13.71 16 11.5V6C16 3.79 14.21 2 12 2C9.79 2 8 3.79 8 6V11.5C8 13.71 9.79 15.5 12 15.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M4.35 9.65V11.35C4.35 15.57 7.78 19 12 19C16.22 19 19.65 15.57 19.65 11.35V9.65" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M12 19V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M8 22H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        音声認識を開始
+                    `;
+                    statusElement.textContent = '音声認識は停止しています';
+                }
+            }
+
+            // 音声認識結果のイベントハンドラ
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                // 結果を表示
+                if (finalTranscript) {
+                    outputElement.value += finalTranscript + ' ';
+                }
+                interimElement.textContent = interimTranscript;
+            };
+
+            // エラーハンドラ
+            recognition.onerror = (event) => {
+                console.error('音声認識エラー:', event.error);
+                statusElement.textContent = '音声認識エラー: ' + event.error;
+                stopRecognition();
+            };
+
+            // 音声認識終了イベント
+            recognition.onend = () => {
+                // continuous が true でも、様々な理由で終了することがあるので、
+                // isRecognizing が true のままなら再開する
+                if (isRecognizing) {
+                    try {
+                        recognition.start();
+                        statusElement.textContent = '音声認識を再開しました。話してください。';
+                    } catch (error) {
+                        console.error('音声認識の再開に失敗しました:', error);
+                        isRecognizing = false;
+                        updateUI();
+                    }
+                }
+            };
+        });
+    </script>
+</body>
+</html>
